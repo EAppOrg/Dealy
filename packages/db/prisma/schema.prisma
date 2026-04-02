@@ -10,13 +10,14 @@ datasource db {
 // ─── Identity ────────────────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  avatarUrl String?
-  role      UserRole @default(MEMBER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  avatarUrl    String?
+  role         UserRole @default(MEMBER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   workspaceMembers WorkspaceMember[]
   preferences      UserPreference?

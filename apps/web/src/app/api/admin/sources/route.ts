@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SourceService } from "@dealy/domain";
+import { getAuthContext, unauthorizedResponse } from "@/lib/session";
 
 /**
- * GET /api/admin/sources — List all sources with counts.
+ * GET /api/admin/sources — List all sources with counts. Requires ADMIN role.
  */
 export async function GET() {
+  const ctx = await getAuthContext();
+  if (!ctx) return unauthorizedResponse();
+  if (ctx.role !== "ADMIN") {
+    return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const sources = await SourceService.list();
     return NextResponse.json({ sources });
@@ -18,9 +25,15 @@ export async function GET() {
 }
 
 /**
- * POST /api/admin/sources — Create a new source.
+ * POST /api/admin/sources — Create a new source. Requires ADMIN role.
  */
 export async function POST(request: NextRequest) {
+  const ctx = await getAuthContext();
+  if (!ctx) return unauthorizedResponse();
+  if (ctx.role !== "ADMIN") {
+    return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
     const { name, slug, type, baseUrl, enabled, config } = body;

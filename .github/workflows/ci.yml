@@ -32,6 +32,8 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dealy_test?schema=public
+      AUTH_SECRET: ci-test-secret-not-for-production
+      AUTH_TRUST_HOST: true
 
     steps:
       - name: Checkout

@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { AlertService } from "@dealy/domain";
+import { getAuthContext, unauthorizedResponse } from "@/lib/session";
 
 /**
  * GET /api/alerts — List alerts for the current workspace.
  */
-export async function GET(request: NextRequest) {
-  const workspaceId =
-    request.headers.get("x-workspace-id") ?? "stub-workspace-001";
+export async function GET() {
+  const ctx = await getAuthContext();
+  if (!ctx) return unauthorizedResponse();
 
   try {
-    const alerts = await AlertService.listForWorkspace(workspaceId);
+    const alerts = await AlertService.listForWorkspace(ctx.workspaceId);
     const mapped = alerts.map((a) => ({
       id: a.id,
       intentId: a.intentId,

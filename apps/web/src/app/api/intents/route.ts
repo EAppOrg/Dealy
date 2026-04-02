@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { IntentService } from "@dealy/domain";
+import { getAuthContext, unauthorizedResponse } from "@/lib/session";
 
 /**
  * GET /api/intents — List intents for the current workspace.
  */
-export async function GET(request: NextRequest) {
-  const workspaceId =
-    request.headers.get("x-workspace-id") ?? "stub-workspace-001";
+export async function GET() {
+  const ctx = await getAuthContext();
+  if (!ctx) return unauthorizedResponse();
 
   try {
-    const intents = await IntentService.list(workspaceId);
+    const intents = await IntentService.list(ctx.workspaceId);
     return NextResponse.json({ intents });
   } catch (error) {
     console.error("Failed to list intents:", error);
@@ -24,12 +25,22 @@ export async function GET(request: NextRequest) {
  * POST /api/intents — Create a new shopping intent.
  */
 export async function POST(request: NextRequest) {
-  const workspaceId =
-    request.headers.get("x-workspace-id") ?? "stub-workspace-001";
+  const ctx = await getAuthContext();
+  if (!ctx) return unauthorizedResponse();
 
   try {
     const body = await request.json();
-    const { title, description, query, priority, budgetMin, budgetMax, currency, monitorEnabled, monitorInterval } = body;
+    const {
+      title,
+      description,
+      query,
+      priority,
+      budgetMin,
+      budgetMax,
+      currency,
+      monitorEnabled,
+      monitorInterval,
+    } = body;
 
     if (!title || !query) {
       return NextResponse.json(
@@ -39,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     const intent = await IntentService.create({
-      workspaceId,
+      workspaceId: ctx.workspaceId,
       title,
       description,
       query,

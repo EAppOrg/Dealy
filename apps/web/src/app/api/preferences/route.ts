@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@dealy/db";
-
-const STUB_USER_ID = "stub-user-001";
+import { getAuthContext, unauthorizedResponse } from "@/lib/session";
 
 /**
  * GET /api/preferences — Get current user's preferences.
  */
 export async function GET() {
+  const ctx = await getAuthContext();
+  if (!ctx) return unauthorizedResponse();
+
   try {
     let prefs = await prisma.userPreference.findUnique({
-      where: { userId: STUB_USER_ID },
+      where: { userId: ctx.userId },
     });
 
     if (!prefs) {
-      // Return defaults if no preferences record exists
       prefs = {
         id: "",
-        userId: STUB_USER_ID,
+        userId: ctx.userId,
         currency: "USD",
         locale: "en-US",
         alertEmail: true,
@@ -41,14 +42,17 @@ export async function GET() {
  * PUT /api/preferences — Update current user's preferences.
  */
 export async function PUT(request: NextRequest) {
+  const ctx = await getAuthContext();
+  if (!ctx) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const { currency, locale, alertEmail, alertPush, maxBudgetAlert } = body;
 
     const prefs = await prisma.userPreference.upsert({
-      where: { userId: STUB_USER_ID },
+      where: { userId: ctx.userId },
       create: {
-        userId: STUB_USER_ID,
+        userId: ctx.userId,
         currency: currency ?? "USD",
         locale: locale ?? "en-US",
         alertEmail: alertEmail ?? true,

@@ -1,23 +1,19 @@
 import { NextResponse } from "next/server";
+import { getAuthContext, unauthorizedResponse } from "@/lib/session";
 
 /**
- * GET /api/auth/me
- *
- * Returns the current user context. In this MVP foundation, returns a
- * stub user. Real auth provider integration is deferred to a future batch.
+ * GET /api/auth/me — Returns the current authenticated user context.
  */
 export async function GET() {
-  // STUB: Real auth is not yet wired. This returns a placeholder user
-  // so pages can render without auth infrastructure. Replace with real
-  // session lookup when auth is implemented.
-  const stubUser = {
-    id: "stub-user-001",
-    email: "user@dealy.app",
-    name: "Dealy User",
-    role: "ADMIN",
-    workspaceId: "stub-workspace-001",
-    workspaceName: "Default Workspace",
-  };
+  const ctx = await getAuthContext();
+  if (!ctx) return unauthorizedResponse();
 
-  return NextResponse.json(stubUser);
+  return NextResponse.json({
+    id: ctx.userId,
+    email: ctx.email,
+    name: ctx.name,
+    role: ctx.role,
+    workspaceId: ctx.workspaceId,
+    workspaceName: ctx.workspaceName,
+  });
 }

@@ -1,9 +1,11 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log("Seeding Dealy database...");
+  const passwordHash = await bcrypt.hash("dealy123", 10);
 
   // ─── Clean slate ──────────────────────────────────────────────────
   await prisma.alertEvent.deleteMany();
@@ -24,18 +26,20 @@ async function main() {
   // ─── Users ────────────────────────────────────────────────────────
   const adminUser = await prisma.user.create({
     data: {
-      id: "stub-user-001",
+      id: "seed-user-admin",
       email: "admin@dealy.app",
       name: "Alex Chen",
+      passwordHash,
       role: "ADMIN",
     },
   });
 
   const memberUser = await prisma.user.create({
     data: {
-      id: "user-002",
+      id: "seed-user-member",
       email: "jordan@dealy.app",
       name: "Jordan Lee",
+      passwordHash,
       role: "MEMBER",
     },
   });
@@ -45,7 +49,7 @@ async function main() {
   // ─── Workspace ────────────────────────────────────────────────────
   const workspace = await prisma.workspace.create({
     data: {
-      id: "stub-workspace-001",
+      id: "seed-workspace-001",
       name: "Dealy HQ",
       slug: "dealy-hq",
     },
