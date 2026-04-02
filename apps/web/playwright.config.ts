@@ -19,10 +19,12 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: "npx next start --port 3000",
-    port: 3000,
-    reuseExistingServer: !process.env.CI,
-    timeout: 30000,
-  },
+  webServer: process.env.CI
+    ? undefined // CI starts the app separately in the workflow
+    : {
+        command: "npx next start --port 3000",
+        port: 3000,
+        reuseExistingServer: true,
+        timeout: 30000,
+      },
 });
