@@ -10,7 +10,7 @@ const ALGORITHM_VERSION = "baseline-v1";
  * This is intentionally simple — real ranking sophistication is deferred
  * to a future batch. The algorithm is honest about its simplicity.
  */
-function baselineRank(offers: RankingInput[]): string[] {
+export function baselineRank(offers: RankingInput[]): string[] {
   const scored = offers.map((o) => {
     const totalCost = o.price + (o.shippingCost ?? 0);
     // Small trust bonus: up to 5% discount equivalent for trusted sellers
