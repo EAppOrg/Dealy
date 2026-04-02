@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { IntentService } from "@dealy/domain";
+import { getAuthContext, unauthorizedResponse } from "@/lib/session";
 
 /**
  * PATCH /api/intents/[id]/status — Change intent status.
@@ -8,6 +9,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const ctx = await getAuthContext();
+  if (!ctx) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const { status } = body;
