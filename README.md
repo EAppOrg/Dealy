@@ -18,23 +18,28 @@ Lean monorepo powered by pnpm workspaces and Turborepo.
 
 - Node.js >= 20
 - pnpm >= 9
-- PostgreSQL 15+
+- Docker (for local PostgreSQL)
 
 ### Setup
 
 ```bash
+# Start PostgreSQL (port 5433)
+docker compose up -d
+
 # Install dependencies
 pnpm install
 
 # Copy environment config
 cp .env.example .env
-# Edit .env with your database URL
 
 # Generate Prisma client
 pnpm db:generate
 
-# Push schema to database (development)
-pnpm db:push
+# Run migrations
+cd packages/db && npx prisma migrate dev && cd ../..
+
+# Seed sample data
+cd packages/db && npx prisma db seed && cd ../..
 
 # Start development server
 pnpm dev
@@ -49,8 +54,9 @@ pnpm dev
 | `pnpm lint` | Lint all packages |
 | `pnpm typecheck` | TypeScript type checking |
 | `pnpm db:generate` | Generate Prisma client |
-| `pnpm db:push` | Push schema to database |
+| `docker compose up -d` | Start local PostgreSQL |
+| `docker compose down` | Stop local PostgreSQL |
 
 ## Project Status
 
-MVP foundation — repository bootstrap and core domain model established.
+MVP foundation with runtime-proven database, API routes, and UI pages.
