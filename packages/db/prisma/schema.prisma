@@ -1,0 +1,348 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Identity ────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+  role      UserRole @default(MEMBER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceMembers WorkspaceMember[]
+  preferences      UserPreference?
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members WorkspaceMember[]
+  intents ShoppingIntent[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        WorkspaceRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@map("workspace_members")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model UserPreference {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  currency       String   @default("USD")
+  locale         String   @default("en-US")
+  alertEmail     Boolean  @default(true)
+  alertPush      Boolean  @default(false)
+  maxBudgetAlert Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+// ─── Shopping Intents ────────────────────────────────────────────────
+
+model ShoppingIntent {
+  id              String         @id @default(cuid())
+  workspaceId     String
+  title           String
+  description     String?
+  query           String
+  status          IntentStatus   @default(ACTIVE)
+  priority        IntentPriority @default(MEDIUM)
+  budgetMin       Float?
+  budgetMax       Float?
+  currency        String         @default("USD")
+  monitorEnabled  Boolean        @default(false)
+  monitorInterval Int?
+  lastMonitoredAt DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  archivedAt      DateTime?
+
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  retrievalRuns   RetrievalRun[]
+  recommendations RecommendationSnapshot[]
+  alertEvents     AlertEvent[]
+
+  @@index([workspaceId])
+  @@index([status])
+  @@map("shopping_intents")
+}
+
+enum IntentStatus {
+  DRAFT
+  ACTIVE
+  MONITORING
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum IntentPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ─── Source Registry ─────────────────────────────────────────────────
+
+model Source {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  type      SourceType
+  baseUrl   String?
+  enabled   Boolean    @default(true)
+  config    Json?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  retrievalRuns RetrievalRun[]
+  offers        Offer[]
+
+  @@map("sources")
+}
+
+enum SourceType {
+  RETAILER
+  MARKETPLACE
+  AGGREGATOR
+  PRICE_COMPARISON
+  MANUAL
+}
+
+// ─── Product Domain ──────────────────────────────────────────────────
+
+model ProductFamily {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  category    String?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products CanonicalProduct[]
+
+  @@map("product_families")
+}
+
+model CanonicalProduct {
+  id             String  @id @default(cuid())
+  familyId       String?
+  name           String
+  brand          String?
+  model          String?
+  upc            String?
+  ean            String?
+  asin           String?
+  imageUrl       String?
+  specifications Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  family ProductFamily? @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  offers Offer[]
+
+  @@index([familyId])
+  @@index([asin])
+  @@map("canonical_products")
+}
+
+model Seller {
+  id         String   @id @default(cuid())
+  name       String
+  slug       String   @unique
+  url        String?
+  rating     Float?
+  trustScore Float?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  offers Offer[]
+
+  @@map("sellers")
+}
+
+model Offer {
+  id           String         @id @default(cuid())
+  productId    String
+  sourceId     String
+  sellerId     String?
+  url          String
+  price        Float
+  currency     String         @default("USD")
+  condition    OfferCondition @default(NEW)
+  availability String?
+  shippingCost Float?
+  shippingNote String?
+  title        String?
+  imageUrl     String?
+  lastSeenAt   DateTime       @default(now())
+  firstSeenAt  DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  product           CanonicalProduct   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  source            Source             @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  seller            Seller?            @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  priceObservations PriceObservation[]
+
+  @@index([productId])
+  @@index([sourceId])
+  @@index([price])
+  @@map("offers")
+}
+
+enum OfferCondition {
+  NEW
+  LIKE_NEW
+  REFURBISHED
+  USED_GOOD
+  USED_FAIR
+}
+
+model PriceObservation {
+  id         String   @id @default(cuid())
+  offerId    String
+  price      Float
+  currency   String   @default("USD")
+  observedAt DateTime @default(now())
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([offerId])
+  @@index([observedAt])
+  @@map("price_observations")
+}
+
+// ─── Retrieval Runs ──────────────────────────────────────────────────
+
+model RetrievalRun {
+  id           String    @id @default(cuid())
+  intentId     String
+  sourceId     String
+  status       RunStatus @default(PENDING)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  itemsFound   Int       @default(0)
+  errorMessage String?
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+
+  intent ShoppingIntent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+  source Source         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([intentId])
+  @@index([status])
+  @@map("retrieval_runs")
+}
+
+enum RunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// ─── Recommendations ─────────────────────────────────────────────────
+
+model RecommendationSnapshot {
+  id             String   @id @default(cuid())
+  intentId       String
+  version        Int      @default(1)
+  rankedOfferIds Json
+  explanation    String?
+  confidence     Float?
+  algorithm      String   @default("baseline-v1")
+  createdAt      DateTime @default(now())
+
+  intent ShoppingIntent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+
+  @@index([intentId])
+  @@map("recommendation_snapshots")
+}
+
+// ─── Alerts ──────────────────────────────────────────────────────────
+
+model AlertEvent {
+  id        String        @id @default(cuid())
+  intentId  String
+  type      AlertType
+  title     String
+  message   String?
+  severity  AlertSeverity @default(INFO)
+  status    AlertStatus   @default(UNREAD)
+  metadata  Json?
+  createdAt DateTime      @default(now())
+  readAt    DateTime?
+
+  intent ShoppingIntent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+
+  @@index([intentId])
+  @@index([status])
+  @@map("alert_events")
+}
+
+enum AlertType {
+  PRICE_DROP
+  NEW_OFFER
+  BACK_IN_STOCK
+  PRICE_THRESHOLD
+  INTENT_COMPLETED
+  RUN_FAILED
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  UNREAD
+  READ
+  DISMISSED
+  ACTED_ON
+}
