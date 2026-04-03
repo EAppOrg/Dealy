@@ -47,7 +47,7 @@ export const RetrievalService = {
 
     // Create run records
     const runs = await prisma.retrievalRun.createManyAndReturn({
-      data: enabledSources.map((source) => ({
+      data: enabledSources.map((source: { id: string }) => ({
         intentId,
         sourceId: source.id,
         status: "PENDING" as const,
@@ -100,7 +100,7 @@ export const RetrievalService = {
       select: { sourceId: true },
     });
 
-    const sourceIds = [...new Set(runs.map((r) => r.sourceId))];
+    const sourceIds = [...new Set(runs.map((r: { sourceId: string }) => r.sourceId))];
 
     if (sourceIds.length === 0) return [];
 
@@ -121,7 +121,7 @@ export const RetrievalService = {
   async getComparisonForIntent(intentId: string) {
     const offers = await this.getOffersForIntent(intentId);
 
-    return offers.map((o) => ({
+    return offers.map((o: any) => ({
       offerId: o.id,
       productName: o.product.name,
       sellerName: o.seller?.name ?? null,

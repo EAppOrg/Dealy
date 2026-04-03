@@ -11,7 +11,7 @@ export async function GET() {
 
   try {
     const alerts = await AlertService.listForWorkspace(ctx.workspaceId);
-    const mapped = alerts.map((a) => ({
+    const mapped = alerts.map((a: any) => ({
       id: a.id,
       intentId: a.intentId,
       intentTitle: a.intent.title,

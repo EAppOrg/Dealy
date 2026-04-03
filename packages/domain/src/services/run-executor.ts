@@ -1,5 +1,11 @@
 import { prisma } from "@dealy/db";
-import type { Source } from "@dealy/db";
+
+type Source = {
+  id: string;
+  name: string;
+  slug: string;
+  baseUrl: string | null;
+};
 
 interface SearchResult {
   title: string;
