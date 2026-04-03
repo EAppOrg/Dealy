@@ -11,101 +11,85 @@ async function loginAsAdmin(page: Page) {
   ).toBeVisible({ timeout: 15000 });
 }
 
-test.describe("Run Search flow", () => {
-  test("trigger Run Search on a fresh intent and see results appear", async ({
+test.describe("Run Search flow (async background execution)", () => {
+  test("trigger returns fast, runs appear as PENDING, then poll to COMPLETED", async ({
     page,
   }) => {
     await loginAsAdmin(page);
 
-    // Create a fresh intent via API so we have a clean starting point
+    // Create a fresh intent
     const createRes = await page.request.post("/api/intents", {
       data: {
-        title: `Run Search E2E ${Date.now()}`,
+        title: `Async Run E2E ${Date.now()}`,
         query: "wireless bluetooth earbuds price",
       },
     });
     const { intent } = await createRes.json();
 
-    // Navigate to the intent detail page
+    // Navigate to detail
     await page.goto(`/intents/${intent.id}`);
     await expect(page.getByText(intent.title)).toBeVisible({
       timeout: 15000,
     });
 
-    // Verify initial state: no runs yet
-    await expect(
-      page.getByText("No retrieval runs yet")
-    ).toBeVisible();
-    await expect(
-      page.getByText("No recommendations yet")
-    ).toBeVisible();
+    // Verify initial empty state
+    await expect(page.getByText("No retrieval runs yet")).toBeVisible();
 
-    // Click Run Search
+    // Click Run Search — returns fast now (background execution)
     const runButton = page.getByRole("button", { name: "Run Search" });
-    await expect(runButton).toBeVisible();
-    await expect(runButton).toBeEnabled();
     await runButton.click();
 
-    // Button should show "Running..." while executing
+    // Button should show "Running..." quickly (not waiting for full execution)
     await expect(
       page.getByRole("button", { name: "Running..." })
     ).toBeVisible({ timeout: 5000 });
 
-    // Wait for execution to complete — button reverts to "Run Search"
-    // Retrieval makes real HTTP calls, so allow generous timeout
-    await expect(
-      page.getByRole("button", { name: "Run Search" })
-    ).toBeVisible({ timeout: 60000 });
-    await expect(
-      page.getByRole("button", { name: "Run Search" })
-    ).toBeEnabled();
-
-    // Verify runs appeared — at least one COMPLETED badge should be visible
-    // (some sources may return 0 items but still COMPLETED)
-    await expect(page.getByText("COMPLETED").first()).toBeVisible();
+    // PENDING runs should appear on the page after the fast POST + first refresh
+    // (The UI fetches intent data immediately after POST returns)
+    await expect(page.getByText("PENDING").first()).toBeVisible({
+      timeout: 10000,
+    });
 
     // "No retrieval runs yet" should be gone
     await expect(page.getByText("No retrieval runs yet")).not.toBeVisible();
 
-    // Verify at least one run shows an "items" count
-    await expect(page.getByText(/\d+ items/).first()).toBeVisible();
+    // Wait for background execution + polling to show COMPLETED
+    // The UI polls every 2s. Execution may take several seconds.
+    await expect(page.getByText("COMPLETED").first()).toBeVisible({
+      timeout: 60000,
+    });
+
+    // Button should revert to "Run Search" once all runs finish
+    await expect(
+      page.getByRole("button", { name: "Run Search" })
+    ).toBeEnabled({ timeout: 60000 });
   });
 
-  test("Run Search results are visible on the compare page for seeded intent", async ({
+  test("compare page shows offers for seeded intent with completed runs", async ({
     page,
   }) => {
     await loginAsAdmin(page);
 
-    // Use the seeded "New development laptop" intent which already has
-    // COMPLETED runs and offers from seed data
     const listRes = await page.request.get("/api/intents");
     const { intents } = await listRes.json();
     const seeded = intents.find(
       (i: { title: string }) => i.title === "New development laptop"
     );
 
-    // Navigate to compare page
     await page.goto(`/intents/${seeded.id}/compare`);
     await expect(
       page.locator("h1", { hasText: "Compare Offers" })
     ).toBeVisible({ timeout: 15000 });
 
-    // Seeded data should show offer rows (not empty state)
-    // The seeded intent has COMPLETED runs with offers at known prices
     await expect(page.getByText("Back to Intent")).toBeVisible();
-
-    // At least one price should be visible (seeded offers have $ prices)
     await expect(page.getByText(/\$[\d,]+/).first()).toBeVisible({
       timeout: 10000,
     });
   });
 
-  test("Run Search on seeded intent adds new runs alongside existing ones", async ({
-    page,
-  }) => {
+  test("Run Search on seeded intent adds new runs", async ({ page }) => {
     await loginAsAdmin(page);
 
-    // Use seeded intent that already has runs
     const listRes = await page.request.get("/api/intents");
     const { intents } = await listRes.json();
     const seeded = intents.find(
@@ -118,20 +102,15 @@ test.describe("Run Search flow", () => {
       timeout: 15000,
     });
 
-    // Count existing COMPLETED badges before running
     const completedBefore = await page.getByText("COMPLETED").count();
 
-    // Trigger new run
+    // Trigger — returns fast
     await page.getByRole("button", { name: "Run Search" }).click();
-    await expect(
-      page.getByRole("button", { name: "Running..." })
-    ).toBeVisible({ timeout: 5000 });
-    await expect(
-      page.getByRole("button", { name: "Run Search" })
-    ).toBeVisible({ timeout: 60000 });
 
-    // Should have more COMPLETED runs now (new runs added to existing)
-    const completedAfter = await page.getByText("COMPLETED").count();
-    expect(completedAfter).toBeGreaterThan(completedBefore);
+    // Wait for new runs to reach COMPLETED via polling
+    await expect(async () => {
+      const completedNow = await page.getByText("COMPLETED").count();
+      expect(completedNow).toBeGreaterThan(completedBefore);
+    }).toPass({ timeout: 60000 });
   });
 });

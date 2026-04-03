@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -44,7 +44,10 @@ interface IntentDetail {
   }>;
 }
 
-const statusBadge: Record<string, "success" | "info" | "warning" | "default"> = {
+const statusBadge: Record<
+  string,
+  "success" | "info" | "warning" | "default" | "danger"
+> = {
   ACTIVE: "success",
   MONITORING: "info",
   PAUSED: "warning",
@@ -52,31 +55,74 @@ const statusBadge: Record<string, "success" | "info" | "warning" | "default"> = 
   COMPLETED: "success",
 };
 
+const runStatusBadge: Record<
+  string,
+  "success" | "info" | "warning" | "default" | "danger"
+> = {
+  COMPLETED: "success",
+  FAILED: "danger",
+  RUNNING: "info",
+  PENDING: "warning",
+};
+
 export default function IntentDetailPage() {
   const params = useParams();
   const [intent, setIntent] = useState<IntentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [runLoading, setRunLoading] = useState(false);
+  const [polling, setPolling] = useState(false);
+
+  const fetchIntent = useCallback(async () => {
+    const res = await fetch(`/api/intents/${params.id}`);
+    const data = await res.json();
+    return data.intent as IntentDetail;
+  }, [params.id]);
 
   useEffect(() => {
-    fetch(`/api/intents/${params.id}`)
-      .then((r) => r.json())
-      .then((data) => setIntent(data.intent))
+    fetchIntent()
+      .then(setIntent)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [params.id]);
+  }, [fetchIntent]);
+
+  // Poll while any runs are PENDING or RUNNING
+  useEffect(() => {
+    if (!polling || !intent) return;
+
+    const hasActiveRuns = intent.retrievalRuns.some(
+      (r) => r.status === "PENDING" || r.status === "RUNNING"
+    );
+
+    if (!hasActiveRuns) {
+      setPolling(false);
+      setRunLoading(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const updated = await fetchIntent();
+        setIntent(updated);
+      } catch (err) {
+        console.error("Poll failed:", err);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [polling, intent, fetchIntent]);
 
   async function triggerRun() {
     setRunLoading(true);
     try {
+      // POST returns immediately with PENDING runs
       await fetch(`/api/intents/${params.id}/run`, { method: "POST" });
-      // Refresh
-      const res = await fetch(`/api/intents/${params.id}`);
-      const data = await res.json();
-      setIntent(data.intent);
+      // Fetch to see the newly created PENDING runs
+      const updated = await fetchIntent();
+      setIntent(updated);
+      // Start polling for completion
+      setPolling(true);
     } catch (err) {
       console.error("Failed to trigger run:", err);
-    } finally {
       setRunLoading(false);
     }
   }
@@ -88,6 +134,10 @@ export default function IntentDetailPage() {
   if (!intent) {
     return <div className="text-red-600">Intent not found</div>;
   }
+
+  const hasActiveRuns = intent.retrievalRuns.some(
+    (r) => r.status === "PENDING" || r.status === "RUNNING"
+  );
 
   return (
     <div className="space-y-6">
@@ -102,8 +152,11 @@ export default function IntentDetailPage() {
           <Link href={`/intents/${intent.id}/compare`}>
             <Button variant="secondary">Compare Offers</Button>
           </Link>
-          <Button onClick={triggerRun} disabled={runLoading}>
-            {runLoading ? "Running..." : "Run Search"}
+          <Button
+            onClick={triggerRun}
+            disabled={runLoading || hasActiveRuns}
+          >
+            {runLoading || hasActiveRuns ? "Running..." : "Run Search"}
           </Button>
         </div>
       </div>
@@ -120,7 +173,9 @@ export default function IntentDetailPage() {
                 <div>
                   <dt className="text-gray-500">Status</dt>
                   <dd className="mt-1">
-                    <Badge variant={statusBadge[intent.status] ?? "default"}>
+                    <Badge
+                      variant={statusBadge[intent.status] ?? "default"}
+                    >
                       {intent.status}
                     </Badge>
                   </dd>
@@ -172,15 +227,7 @@ export default function IntentDetailPage() {
                     >
                       <div>
                         <Badge
-                          variant={
-                            run.status === "COMPLETED"
-                              ? "success"
-                              : run.status === "FAILED"
-                                ? "danger"
-                                : run.status === "RUNNING"
-                                  ? "info"
-                                  : "default"
-                          }
+                          variant={runStatusBadge[run.status] ?? "default"}
                         >
                           {run.status}
                         </Badge>
