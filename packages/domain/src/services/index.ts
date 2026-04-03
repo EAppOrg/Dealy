@@ -6,3 +6,5 @@ export type { CreateSourceInput, UpdateSourceInput } from "./source-service";
 export { RetrievalService } from "./retrieval-service";
 export { executeRun } from "./run-executor";
 export { startWorker, stopWorker, pollOnce, sweepStaleRuns } from "./run-worker";
+export { registerUser } from "./registration-service";
+export type { RegisterInput, RegisterResult } from "./registration-service";

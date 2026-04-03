@@ -12,7 +12,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@dealy/db": "workspace:*"
+    "@dealy/db": "workspace:*",
+    "bcryptjs": "^3.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

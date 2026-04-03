@@ -22,12 +22,12 @@ function findRouteFiles(dir: string): string[] {
 const apiDir = path.resolve(__dirname, "../app/api");
 const allRouteFiles = findRouteFiles(apiDir);
 
-// Separate auth-handler route from protected routes
-const nextAuthRoute = allRouteFiles.filter((f) =>
-  f.includes("[...nextauth]")
+// Separate public routes (auth handlers) from protected routes
+const publicRouteFiles = allRouteFiles.filter(
+  (f) => f.includes("[...nextauth]") || f.includes("/register/")
 );
 const protectedRouteFiles = allRouteFiles.filter(
-  (f) => !f.includes("[...nextauth]")
+  (f) => !f.includes("[...nextauth]") && !f.includes("/register/")
 );
 
 describe("Structural auth coverage", () => {
@@ -36,8 +36,8 @@ describe("Structural auth coverage", () => {
     expect(protectedRouteFiles.length).toBeGreaterThan(0);
   });
 
-  it("excludes only the [...nextauth] handler from protection checks", () => {
-    expect(nextAuthRoute).toHaveLength(1);
+  it("excludes public auth routes from protection checks", () => {
+    expect(publicRouteFiles).toHaveLength(2); // [...nextauth] + register
   });
 
   it.each(protectedRouteFiles)(

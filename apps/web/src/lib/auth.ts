@@ -35,13 +35,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     authorized({ auth: session, request: { nextUrl } }) {
       const isLoggedIn = !!session?.user;
-      const isOnLoginPage = nextUrl.pathname.startsWith("/login");
+      const isPublicPage =
+        nextUrl.pathname.startsWith("/login") ||
+        nextUrl.pathname.startsWith("/signup");
       const isApi = nextUrl.pathname.startsWith("/api");
 
       // API routes: pass through — handlers return 401 themselves
       if (isApi) return true;
-      // Login page: always accessible
-      if (isOnLoginPage) return true;
+      // Public pages: always accessible
+      if (isPublicPage) return true;
       // All other pages: require login (middleware redirects to /login)
       if (!isLoggedIn) return false;
       return true;
