@@ -33,11 +33,11 @@ test.describe("Authenticated app flows", () => {
   test("intent detail page renders seeded data", async ({ page }) => {
     const response = await page.request.get("/api/intents");
     const { intents } = await response.json();
-    const activeIntent = intents.find(
-      (i: { status: string }) => i.status === "ACTIVE"
+    const seededIntent = intents.find(
+      (i: { title: string }) => i.title === "New development laptop"
     );
 
-    await page.goto(`/intents/${activeIntent.id}`);
+    await page.goto(`/intents/${seededIntent.id}`);
     await expect(
       page.getByText("New development laptop")
     ).toBeVisible({ timeout: 15000 });
@@ -49,11 +49,11 @@ test.describe("Authenticated app flows", () => {
   test("compare page renders offer section", async ({ page }) => {
     const response = await page.request.get("/api/intents");
     const { intents } = await response.json();
-    const activeIntent = intents.find(
-      (i: { status: string }) => i.status === "ACTIVE"
+    const seededIntent = intents.find(
+      (i: { title: string }) => i.title === "New development laptop"
     );
 
-    await page.goto(`/intents/${activeIntent.id}/compare`);
+    await page.goto(`/intents/${seededIntent.id}/compare`);
     await expect(
       page.locator("h1", { hasText: "Compare Offers" })
     ).toBeVisible({ timeout: 15000 });
