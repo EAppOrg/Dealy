@@ -40,7 +40,7 @@ describe("RecommendationService", () => {
       const source = await createTestSource();
 
       // Create a completed retrieval run linking intent → source
-      await prisma.retrievalRun.create({
+      const run = await prisma.retrievalRun.create({
         data: {
           intentId: intent.id,
           sourceId: source.id,
@@ -69,6 +69,15 @@ describe("RecommendationService", () => {
         trustScore: 0.95,
       });
 
+      // Associate offers with run
+      await prisma.runOffer.createMany({
+        data: [
+          { runId: run.id, offerId: cheap.id },
+          { runId: run.id, offerId: mid.id },
+          { runId: run.id, offerId: expensive.id },
+        ],
+      });
+
       const result = await RecommendationService.generateForIntent(intent.id);
 
       expect(result).not.toBeNull();
@@ -91,7 +100,7 @@ describe("RecommendationService", () => {
 
       const source = await createTestSource();
 
-      await prisma.retrievalRun.create({
+      const run = await prisma.retrievalRun.create({
         data: {
           intentId: intent.id,
           sourceId: source.id,
@@ -100,7 +109,8 @@ describe("RecommendationService", () => {
         },
       });
 
-      await createTestOffer({ sourceId: source.id, price: 100 });
+      const { offer } = await createTestOffer({ sourceId: source.id, price: 100 });
+      await prisma.runOffer.create({ data: { runId: run.id, offerId: offer.id } });
 
       const v1 = await RecommendationService.generateForIntent(intent.id);
       const v2 = await RecommendationService.generateForIntent(intent.id);
@@ -118,7 +128,7 @@ describe("RecommendationService", () => {
 
       const source = await createTestSource();
 
-      await prisma.retrievalRun.create({
+      const run = await prisma.retrievalRun.create({
         data: {
           intentId: intent.id,
           sourceId: source.id,
@@ -127,7 +137,8 @@ describe("RecommendationService", () => {
         },
       });
 
-      await createTestOffer({ sourceId: source.id, price: 100 });
+      const { offer } = await createTestOffer({ sourceId: source.id, price: 100 });
+      await prisma.runOffer.create({ data: { runId: run.id, offerId: offer.id } });
 
       const result = await RecommendationService.generateForIntent(intent.id);
 

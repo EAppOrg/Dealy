@@ -36,20 +36,32 @@ export const RecommendationService = {
    * ranks them using the baseline algorithm, and stores the snapshot.
    */
   async generateForIntent(intentId: string) {
-    // Find all offers associated with this intent via retrieval runs
+    // Find all offers associated with this intent via run-offer associations
     const runs = await prisma.retrievalRun.findMany({
       where: { intentId, status: "COMPLETED" },
-      select: { sourceId: true },
+      select: { id: true },
     });
 
     if (runs.length === 0) {
       return null; // No completed runs — cannot recommend
     }
 
-    const sourceIds = [...new Set(runs.map((r) => r.sourceId))];
+    const runIds = runs.map((r) => r.id);
+
+    const runOffers = await prisma.runOffer.findMany({
+      where: { runId: { in: runIds } },
+      select: { offerId: true },
+      distinct: ["offerId"],
+    });
+
+    const offerIds = runOffers.map((ro) => ro.offerId);
+
+    if (offerIds.length === 0) {
+      return null;
+    }
 
     const offers = await prisma.offer.findMany({
-      where: { sourceId: { in: sourceIds } },
+      where: { id: { in: offerIds } },
       include: { seller: { select: { trustScore: true } } },
     });
 

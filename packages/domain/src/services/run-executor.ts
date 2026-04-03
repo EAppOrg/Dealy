@@ -284,6 +284,13 @@ export async function executeRun(runId: string): Promise<{
         }
       }
 
+      // Record run-offer association for intent scoping
+      await prisma.runOffer.upsert({
+        where: { runId_offerId: { runId, offerId } },
+        create: { runId, offerId },
+        update: {},
+      });
+
       // Always append a new price observation
       await prisma.priceObservation.create({
         data: {

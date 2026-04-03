@@ -228,6 +228,7 @@ model Offer {
   source            Source             @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   seller            Seller?            @relation(fields: [sellerId], references: [id], onDelete: SetNull)
   priceObservations PriceObservation[]
+  runOffers         RunOffer[]
 
   @@unique([sourceId, url])
   @@index([productId])
@@ -272,8 +273,9 @@ model RetrievalRun {
   metadata     Json?
   createdAt    DateTime  @default(now())
 
-  intent ShoppingIntent @relation(fields: [intentId], references: [id], onDelete: Cascade)
-  source Source         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  intent    ShoppingIntent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+  source    Source         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  runOffers RunOffer[]
 
   @@index([intentId])
   @@index([status])
@@ -286,6 +288,19 @@ enum RunStatus {
   COMPLETED
   FAILED
   CANCELLED
+}
+
+model RunOffer {
+  id      String @id @default(cuid())
+  runId   String
+  offerId String
+
+  run   RetrievalRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  offer Offer        @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, offerId])
+  @@index([offerId])
+  @@map("run_offers")
 }
 
 // ─── Recommendations ─────────────────────────────────────────────────

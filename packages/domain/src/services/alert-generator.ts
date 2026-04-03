@@ -37,14 +37,19 @@ export async function generateAlertsForRun(runId: string): Promise<number> {
 
   if (run.status !== "COMPLETED" || run.itemsFound === 0) return 0;
 
-  // Get offers seen by this run (created or updated during execution)
-  const recentOffers = await prisma.offer.findMany({
-    where: {
-      sourceId: run.sourceId,
-      lastSeenAt: { gte: run.startedAt ?? run.createdAt },
-    },
-    orderBy: { price: "asc" },
+  // Get offers discovered by this run via run-offer associations
+  const runOfferRecords = await prisma.runOffer.findMany({
+    where: { runId: run.id },
+    select: { offerId: true },
   });
+  const offerIds = runOfferRecords.map((ro) => ro.offerId);
+
+  const recentOffers = offerIds.length > 0
+    ? await prisma.offer.findMany({
+        where: { id: { in: offerIds } },
+        orderBy: { price: "asc" },
+      })
+    : [];
 
   if (recentOffers.length === 0) return 0;
 
@@ -81,16 +86,25 @@ export async function generateAlertsForRun(runId: string): Promise<number> {
     });
     alertsCreated++;
   } else {
-    // Compare current best price to the previous best observation from this source.
-    // We use price observations (not offer.price) because deduped offers have their
-    // price field updated in-place — the old price only lives in observations.
-    const previousBestObs = await prisma.priceObservation.findFirst({
-      where: {
-        offer: { sourceId: run.sourceId },
-        observedAt: { lt: run.startedAt ?? run.createdAt },
-      },
-      orderBy: { price: "asc" },
+    // Compare to previous best price from this intent+source's prior runs.
+    // Find offer IDs from prior runs, then find cheapest historical observation.
+    const priorRunIds = previousRuns.map((r) => r.id);
+    const priorRunOffers = await prisma.runOffer.findMany({
+      where: { runId: { in: priorRunIds } },
+      select: { offerId: true },
+      distinct: ["offerId"],
     });
+    const priorOfferIds = priorRunOffers.map((ro) => ro.offerId);
+
+    const previousBestObs = priorOfferIds.length > 0
+      ? await prisma.priceObservation.findFirst({
+          where: {
+            offerId: { in: priorOfferIds },
+            observedAt: { lt: run.startedAt ?? run.createdAt },
+          },
+          orderBy: { price: "asc" },
+        })
+      : null;
 
     if (previousBestObs && recentOffers.length > 0) {
       const previousBest = previousBestObs.price;

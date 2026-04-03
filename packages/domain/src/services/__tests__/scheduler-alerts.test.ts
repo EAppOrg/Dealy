@@ -186,6 +186,10 @@ describe("generateAlertsForRun (alert generation)", () => {
       where: { id: offer.id },
       data: { createdAt: new Date(), lastSeenAt: new Date() },
     });
+    // Associate offer with run
+    await prisma.runOffer.create({
+      data: { runId: run.id, offerId: offer.id },
+    });
 
     const count = await generateAlertsForRun(run.id);
     expect(count).toBe(1);
@@ -203,7 +207,7 @@ describe("generateAlertsForRun (alert generation)", () => {
     const newTime = new Date();
 
     // Previous completed run + old offer
-    await prisma.retrievalRun.create({
+    const oldRun = await prisma.retrievalRun.create({
       data: {
         intentId,
         sourceId,
@@ -228,6 +232,9 @@ describe("generateAlertsForRun (alert generation)", () => {
         observedAt: new Date(oldTime.getTime() - 500),
       },
     });
+    await prisma.runOffer.create({
+      data: { runId: oldRun.id, offerId: oldOffer.id },
+    });
 
     // New run + cheaper offer
     const run = await prisma.retrievalRun.create({
@@ -247,6 +254,9 @@ describe("generateAlertsForRun (alert generation)", () => {
     await prisma.offer.update({
       where: { id: newOffer.id },
       data: { createdAt: newTime, lastSeenAt: newTime },
+    });
+    await prisma.runOffer.create({
+      data: { runId: run.id, offerId: newOffer.id },
     });
 
     const count = await generateAlertsForRun(run.id);

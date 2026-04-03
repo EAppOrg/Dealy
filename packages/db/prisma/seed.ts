@@ -11,6 +11,7 @@ async function main() {
   await prisma.alertEvent.deleteMany();
   await prisma.recommendationSnapshot.deleteMany();
   await prisma.priceObservation.deleteMany();
+  await prisma.runOffer.deleteMany();
   await prisma.retrievalRun.deleteMany();
   await prisma.offer.deleteMany();
   await prisma.canonicalProduct.deleteMany();
@@ -457,7 +458,7 @@ async function main() {
 
   // ─── Retrieval Runs ───────────────────────────────────────────────
   // Laptop intent: completed runs for Amazon and BestBuy
-  await prisma.retrievalRun.create({
+  const runLaptopAmazon = await prisma.retrievalRun.create({
     data: {
       intentId: intentLaptop.id,
       sourceId: sourceAmazon.id,
@@ -468,7 +469,7 @@ async function main() {
     },
   });
 
-  await prisma.retrievalRun.create({
+  const runLaptopBestBuy = await prisma.retrievalRun.create({
     data: {
       intentId: intentLaptop.id,
       sourceId: sourceBestBuy.id,
@@ -480,7 +481,7 @@ async function main() {
   });
 
   // Headphones intent: completed runs for all three enabled sources
-  await prisma.retrievalRun.create({
+  const runHeadphonesAmazon = await prisma.retrievalRun.create({
     data: {
       intentId: intentHeadphones.id,
       sourceId: sourceAmazon.id,
@@ -491,7 +492,7 @@ async function main() {
     },
   });
 
-  await prisma.retrievalRun.create({
+  const runHeadphonesBestBuy = await prisma.retrievalRun.create({
     data: {
       intentId: intentHeadphones.id,
       sourceId: sourceBestBuy.id,
@@ -502,7 +503,7 @@ async function main() {
     },
   });
 
-  await prisma.retrievalRun.create({
+  const runHeadphonesNewegg = await prisma.retrievalRun.create({
     data: {
       intentId: intentHeadphones.id,
       sourceId: sourceNewegg.id,
@@ -527,6 +528,28 @@ async function main() {
   });
 
   console.log("  Created 6 retrieval runs");
+
+  // ─── Run-Offer Associations ──────────────────────────────────────
+  // Laptop intent runs → laptop offers
+  await prisma.runOffer.createMany({
+    data: [
+      { runId: runLaptopAmazon.id, offerId: offerMBP_Amazon.id },
+      { runId: runLaptopAmazon.id, offerId: offerMBP_ThirdParty.id },
+      { runId: runLaptopBestBuy.id, offerId: offerMBP_BestBuy.id },
+    ],
+  });
+
+  // Headphones intent runs → headphones offers
+  await prisma.runOffer.createMany({
+    data: [
+      { runId: runHeadphonesAmazon.id, offerId: offerXM5_Amazon.id },
+      { runId: runHeadphonesAmazon.id, offerId: offerAPMax_Amazon.id },
+      { runId: runHeadphonesBestBuy.id, offerId: offerXM5_BestBuy.id },
+      { runId: runHeadphonesNewegg.id, offerId: offerXM5_Newegg.id },
+    ],
+  });
+
+  console.log("  Created 7 run-offer associations");
 
   // ─── Recommendation Snapshots ─────────────────────────────────────
   // Laptop intent recommendation

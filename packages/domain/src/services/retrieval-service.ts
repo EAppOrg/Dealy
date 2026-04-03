@@ -75,22 +75,31 @@ export const RetrievalService = {
   },
 
   /**
-   * Get offers associated with an intent (via its retrieval run sources).
+   * Get offers associated with an intent via run-offer associations.
+   * Only returns offers actually discovered by this intent's retrieval runs.
    */
   async getOffersForIntent(intentId: string) {
     const runs = await prisma.retrievalRun.findMany({
       where: { intentId, status: "COMPLETED" },
-      select: { sourceId: true },
+      select: { id: true },
     });
 
-    const sourceIds = [
-      ...new Set(runs.map((r: { sourceId: string }) => r.sourceId)),
-    ];
+    if (runs.length === 0) return [];
 
-    if (sourceIds.length === 0) return [];
+    const runIds = runs.map((r) => r.id);
+
+    // Get distinct offer IDs associated with this intent's runs
+    const runOffers = await prisma.runOffer.findMany({
+      where: { runId: { in: runIds } },
+      select: { offerId: true },
+      distinct: ["offerId"],
+    });
+
+    const offerIds = runOffers.map((ro) => ro.offerId);
+    if (offerIds.length === 0) return [];
 
     return prisma.offer.findMany({
-      where: { sourceId: { in: sourceIds } },
+      where: { id: { in: offerIds } },
       include: {
         product: {
           select: {
