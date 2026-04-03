@@ -186,6 +186,59 @@ describe("intent-scoping", () => {
     expect(obs).toHaveLength(2);
   });
 
+  it("offer without RunOffer is invisible; adding RunOffer restores visibility", async () => {
+    // Simulate a legacy offer created before RunOffer model existed
+    const product = await prisma.canonicalProduct.create({
+      data: { name: "Legacy Laptop", brand: "Dell" },
+    });
+    const legacyOffer = await prisma.offer.create({
+      data: {
+        productId: product.id,
+        sourceId,
+        url: "https://store.example.com/legacy-laptop",
+        price: 999,
+        title: "Legacy Laptop",
+      },
+    });
+
+    // Create a completed run for Intent A
+    const run = await prisma.retrievalRun.create({
+      data: {
+        intentId: intentAId,
+        sourceId,
+        status: "COMPLETED",
+        itemsFound: 1,
+        startedAt: new Date(),
+        completedAt: new Date(),
+      },
+    });
+
+    // Without RunOffer, legacy offer is invisible
+    const compareBefore = await RetrievalService.getComparisonForIntent(
+      intentAId
+    );
+    expect(compareBefore).toHaveLength(0);
+
+    // Simulate backfill: create RunOffer association
+    await prisma.runOffer.create({
+      data: { runId: run.id, offerId: legacyOffer.id },
+    });
+
+    // Now the legacy offer is visible
+    const compareAfter = await RetrievalService.getComparisonForIntent(
+      intentAId
+    );
+    expect(compareAfter).toHaveLength(1);
+    expect(compareAfter[0].productName).toBe("Legacy Laptop");
+
+    // Idempotency: creating same RunOffer again should fail with unique constraint
+    await expect(
+      prisma.runOffer.create({
+        data: { runId: run.id, offerId: legacyOffer.id },
+      })
+    ).rejects.toThrow();
+  });
+
   it("shared offer discovered by both intents appears in both", async () => {
     const sharedUrl = "https://store.example.com/universal-product";
     const html = makeDdgHtml([
