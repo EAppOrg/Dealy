@@ -1,38 +1,4 @@
 import { prisma } from "@dealy/db";
-import { executeRun } from "./run-executor";
-import { RecommendationService } from "./recommendation-service";
-
-/**
- * Execute all runs for an intent asynchronously (fire-and-forget).
- * This function is NOT awaited by the trigger route — it runs in the
- * background after the HTTP response has been sent.
- *
- * Each run transitions PENDING → RUNNING → COMPLETED/FAILED.
- * After all runs finish, a recommendation snapshot is auto-generated.
- */
-async function executeRunsAsync(
-  runIds: string[],
-  intentId: string
-): Promise<void> {
-  let totalItems = 0;
-
-  for (const runId of runIds) {
-    try {
-      const result = await executeRun(runId);
-      totalItems += result.itemsFound;
-    } catch (err) {
-      console.error(`Background run ${runId} failed:`, err);
-    }
-  }
-
-  if (totalItems > 0) {
-    try {
-      await RecommendationService.generateForIntent(intentId);
-    } catch (err) {
-      console.error(`Recommendation generation failed for ${intentId}:`, err);
-    }
-  }
-}
 
 export const RetrievalService = {
   async listRuns(filters?: {
@@ -67,11 +33,11 @@ export const RetrievalService = {
   },
 
   /**
-   * Trigger retrieval runs for an intent.
+   * Enqueue retrieval runs for an intent.
    *
-   * Creates PENDING run records and kicks off background execution.
-   * Returns immediately — does NOT wait for execution to complete.
-   * The caller should poll run status to observe progress.
+   * Creates PENDING run records in the database and returns immediately.
+   * The DB-backed worker polls for PENDING runs and executes them.
+   * No in-memory fire-and-forget — all state is in Postgres.
    */
   async triggerForIntent(intentId: string) {
     const enabledSources = await prisma.source.findMany({
@@ -82,7 +48,7 @@ export const RetrievalService = {
       return { runs: [], message: "No enabled sources configured" };
     }
 
-    // Create run records in PENDING state
+    // Create run records in PENDING state — the durable queue
     const runs = await prisma.retrievalRun.createManyAndReturn({
       data: enabledSources.map((source: { id: string }) => ({
         intentId,
@@ -97,19 +63,14 @@ export const RetrievalService = {
       data: { lastMonitoredAt: new Date() },
     });
 
-    // Fire-and-forget: start background execution without awaiting
-    const runIds = runs.map((r) => r.id);
-    executeRunsAsync(runIds, intentId).catch((err) =>
-      console.error("Background execution batch error:", err)
-    );
-
+    // No fire-and-forget. Worker picks up PENDING runs via DB poll.
     return {
       runs: runs.map((r) => ({
         runId: r.id,
         sourceId: r.sourceId,
         status: r.status,
       })),
-      message: `Created ${runs.length} run(s). Execution started in background.`,
+      message: `Enqueued ${runs.length} run(s). Worker will execute them.`,
     };
   },
 

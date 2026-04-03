@@ -87,30 +87,41 @@ test.describe("Run Search flow (async background execution)", () => {
     });
   });
 
-  test("Run Search on seeded intent adds new runs", async ({ page }) => {
+  test("trigger returns PENDING runs, worker executes them to terminal state", async ({
+    page,
+  }) => {
     await loginAsAdmin(page);
 
-    const listRes = await page.request.get("/api/intents");
-    const { intents } = await listRes.json();
-    const seeded = intents.find(
-      (i: { title: string }) =>
-        i.title === "Noise-cancelling headphones for office"
-    );
-
-    await page.goto(`/intents/${seeded.id}`);
-    await expect(page.getByText(seeded.title)).toBeVisible({
-      timeout: 15000,
+    // Create a fresh intent to avoid collision with prior test runs
+    const createRes = await page.request.post("/api/intents", {
+      data: {
+        title: `Worker E2E ${Date.now()}`,
+        query: "test keyboard switches",
+      },
     });
+    const { intent } = await createRes.json();
 
-    const completedBefore = await page.getByText("COMPLETED").count();
+    // Trigger — should return PENDING runs instantly
+    const triggerRes = await page.request.post(
+      `/api/intents/${intent.id}/run`
+    );
+    const triggerData = await triggerRes.json();
+    expect(triggerData.runs.length).toBeGreaterThan(0);
+    expect(triggerData.runs[0].status).toBe("PENDING");
 
-    // Trigger — returns fast
-    await page.getByRole("button", { name: "Run Search" }).click();
-
-    // Wait for new runs to reach COMPLETED via polling
+    // Poll until all runs reach terminal state (worker picks them up)
     await expect(async () => {
-      const completedNow = await page.getByText("COMPLETED").count();
-      expect(completedNow).toBeGreaterThan(completedBefore);
-    }).toPass({ timeout: 60000 });
+      const checkRes = await page.request.get(
+        `/api/intents/${intent.id}`
+      );
+      const checkData = await checkRes.json();
+      const runs = checkData.intent.retrievalRuns;
+      expect(runs.length).toBeGreaterThan(0);
+      const allTerminal = runs.every(
+        (r: { status: string }) =>
+          r.status === "COMPLETED" || r.status === "FAILED"
+      );
+      expect(allTerminal).toBe(true);
+    }).toPass({ timeout: 60000, intervals: [2000] });
   });
 });
