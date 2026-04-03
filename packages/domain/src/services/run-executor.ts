@@ -222,22 +222,66 @@ export async function executeRun(runId: string): Promise<{
           },
         });
 
-        const offer = await prisma.offer.create({
-          data: {
-            productId: product.id,
-            sourceId: run.source.id,
-            sellerId: seller.id,
-            url: result.url,
-            price: result.price,
-            currency: result.currency,
-            condition: result.condition,
-            availability: result.availability,
-            shippingCost: 0,
-            title: result.title,
-          },
-        });
-        offerId = offer.id;
-        offersCreated++;
+        try {
+          const offer = await prisma.offer.create({
+            data: {
+              productId: product.id,
+              sourceId: run.source.id,
+              sellerId: seller.id,
+              url: result.url,
+              price: result.price,
+              currency: result.currency,
+              condition: result.condition,
+              availability: result.availability,
+              shippingCost: 0,
+              title: result.title,
+            },
+          });
+          offerId = offer.id;
+          offersCreated++;
+        } catch (err: unknown) {
+          // Race condition: another concurrent run inserted this (sourceId, url)
+          // between our findUnique check and this create. Recover gracefully.
+          if (
+            err &&
+            typeof err === "object" &&
+            "code" in err &&
+            err.code === "P2002"
+          ) {
+            // Clean up the orphaned product we just created
+            await prisma.canonicalProduct
+              .delete({ where: { id: product.id } })
+              .catch(() => {});
+
+            // Find and update the race-winning offer
+            const racedOffer = await prisma.offer.findUnique({
+              where: {
+                sourceId_url: {
+                  sourceId: run.source.id,
+                  url: result.url,
+                },
+              },
+            });
+
+            if (!racedOffer) throw err;
+
+            await prisma.offer.update({
+              where: { id: racedOffer.id },
+              data: {
+                price: result.price,
+                currency: result.currency,
+                condition: result.condition,
+                availability: result.availability,
+                title: result.title,
+                lastSeenAt: new Date(),
+              },
+            });
+            offerId = racedOffer.id;
+            offersReused++;
+          } else {
+            throw err;
+          }
+        }
       }
 
       // Always append a new price observation
