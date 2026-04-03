@@ -1,4 +1,6 @@
 import { prisma } from "@dealy/db";
+import { executeRun } from "./run-executor";
+import { RecommendationService } from "./recommendation-service";
 
 export const RetrievalService = {
   async listRuns(filters?: { intentId?: string; sourceId?: string; status?: string }) {
@@ -29,12 +31,10 @@ export const RetrievalService = {
   },
 
   /**
-   * Trigger a retrieval run for an intent across all enabled sources.
+   * Trigger retrieval runs for an intent across all enabled sources.
    *
-   * NOTE: This creates run records in PENDING status. Actual retrieval
-   * execution (HTTP fetching, parsing, offer extraction) is deferred
-   * to a future batch that adds background job processing. The service
-   * boundary and run lifecycle model are established here.
+   * Creates run records, executes each one in-process (real HTTP search),
+   * and auto-generates a recommendation snapshot from the results.
    */
   async triggerForIntent(intentId: string) {
     const enabledSources = await prisma.source.findMany({
@@ -45,6 +45,7 @@ export const RetrievalService = {
       return { runs: [], message: "No enabled sources configured" };
     }
 
+    // Create run records
     const runs = await prisma.retrievalRun.createManyAndReturn({
       data: enabledSources.map((source) => ({
         intentId,
@@ -59,9 +60,34 @@ export const RetrievalService = {
       data: { lastMonitoredAt: new Date() },
     });
 
+    // Execute each run in-process
+    const results = [];
+    for (const run of runs) {
+      const result = await executeRun(run.id);
+      results.push({ runId: run.id, ...result });
+    }
+
+    // Auto-generate recommendation from newly found offers
+    const totalItems = results.reduce((sum, r) => sum + r.itemsFound, 0);
+    let recommendation = null;
+    if (totalItems > 0) {
+      recommendation =
+        await RecommendationService.generateForIntent(intentId);
+    }
+
+    const completed = results.filter((r) => r.status === "COMPLETED").length;
+    const failed = results.filter((r) => r.status === "FAILED").length;
+
     return {
-      runs,
-      message: `Created ${runs.length} retrieval run(s) in PENDING status. Background execution is not yet implemented.`,
+      runs: results,
+      totalItems,
+      recommendation,
+      message:
+        `Executed ${runs.length} run(s): ${completed} completed, ${failed} failed. ` +
+        `Found ${totalItems} item(s).` +
+        (recommendation
+          ? ` Recommendation v${recommendation.version} generated.`
+          : ""),
     };
   },
 
