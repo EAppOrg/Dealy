@@ -181,10 +181,10 @@ describe("generateAlertsForRun (alert generation)", () => {
       sourceId,
       price: 99.99,
     });
-    // Backdate offer to after run started
+    // Set timestamps to after run started
     await prisma.offer.update({
       where: { id: offer.id },
-      data: { createdAt: new Date() },
+      data: { createdAt: new Date(), lastSeenAt: new Date() },
     });
 
     const count = await generateAlertsForRun(run.id);
@@ -221,6 +221,13 @@ describe("generateAlertsForRun (alert generation)", () => {
       where: { id: oldOffer.id },
       data: { createdAt: new Date(oldTime.getTime() - 500) },
     });
+    await prisma.priceObservation.create({
+      data: {
+        offerId: oldOffer.id,
+        price: 200.0,
+        observedAt: new Date(oldTime.getTime() - 500),
+      },
+    });
 
     // New run + cheaper offer
     const run = await prisma.retrievalRun.create({
@@ -239,7 +246,7 @@ describe("generateAlertsForRun (alert generation)", () => {
     });
     await prisma.offer.update({
       where: { id: newOffer.id },
-      data: { createdAt: newTime },
+      data: { createdAt: newTime, lastSeenAt: newTime },
     });
 
     const count = await generateAlertsForRun(run.id);

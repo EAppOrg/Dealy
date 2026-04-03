@@ -229,6 +229,7 @@ model Offer {
   seller            Seller?            @relation(fields: [sellerId], references: [id], onDelete: SetNull)
   priceObservations PriceObservation[]
 
+  @@unique([sourceId, url])
   @@index([productId])
   @@index([sourceId])
   @@index([price])

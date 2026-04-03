@@ -37,11 +37,11 @@ export async function generateAlertsForRun(runId: string): Promise<number> {
 
   if (run.status !== "COMPLETED" || run.itemsFound === 0) return 0;
 
-  // Get new offers created by this run (offers from this source created recently)
+  // Get offers seen by this run (created or updated during execution)
   const recentOffers = await prisma.offer.findMany({
     where: {
       sourceId: run.sourceId,
-      createdAt: { gte: run.startedAt ?? run.createdAt },
+      lastSeenAt: { gte: run.startedAt ?? run.createdAt },
     },
     orderBy: { price: "asc" },
   });
@@ -81,18 +81,19 @@ export async function generateAlertsForRun(runId: string): Promise<number> {
     });
     alertsCreated++;
   } else {
-    // Compare to previous best price from this source
-    const previousOffers = await prisma.offer.findMany({
+    // Compare current best price to the previous best observation from this source.
+    // We use price observations (not offer.price) because deduped offers have their
+    // price field updated in-place — the old price only lives in observations.
+    const previousBestObs = await prisma.priceObservation.findFirst({
       where: {
-        sourceId: run.sourceId,
-        createdAt: { lt: run.startedAt ?? run.createdAt },
+        offer: { sourceId: run.sourceId },
+        observedAt: { lt: run.startedAt ?? run.createdAt },
       },
       orderBy: { price: "asc" },
-      take: 1,
     });
 
-    if (previousOffers.length > 0 && recentOffers.length > 0) {
-      const previousBest = previousOffers[0].price;
+    if (previousBestObs && recentOffers.length > 0) {
+      const previousBest = previousBestObs.price;
       const newBest = recentOffers[0].price;
 
       if (newBest < previousBest) {

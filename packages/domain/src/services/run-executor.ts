@@ -182,33 +182,68 @@ export async function executeRun(runId: string): Promise<{
     });
 
     let itemsFound = 0;
+    let offersReused = 0;
+    let offersCreated = 0;
 
     for (const result of results) {
-      const product = await prisma.canonicalProduct.create({
-        data: {
-          name: result.title,
-          brand: extractBrand(result.title),
+      // Dedup: check for existing offer by (sourceId, url)
+      const existingOffer = await prisma.offer.findUnique({
+        where: {
+          sourceId_url: {
+            sourceId: run.source.id,
+            url: result.url,
+          },
         },
       });
 
-      const offer = await prisma.offer.create({
-        data: {
-          productId: product.id,
-          sourceId: run.source.id,
-          sellerId: seller.id,
-          url: result.url,
-          price: result.price,
-          currency: result.currency,
-          condition: result.condition,
-          availability: result.availability,
-          shippingCost: 0,
-          title: result.title,
-        },
-      });
+      let offerId: string;
 
+      if (existingOffer) {
+        // Reuse existing offer — update mutable fields and lastSeenAt
+        await prisma.offer.update({
+          where: { id: existingOffer.id },
+          data: {
+            price: result.price,
+            currency: result.currency,
+            condition: result.condition,
+            availability: result.availability,
+            title: result.title,
+            lastSeenAt: new Date(),
+          },
+        });
+        offerId = existingOffer.id;
+        offersReused++;
+      } else {
+        // New offer — create product and offer
+        const product = await prisma.canonicalProduct.create({
+          data: {
+            name: result.title,
+            brand: extractBrand(result.title),
+          },
+        });
+
+        const offer = await prisma.offer.create({
+          data: {
+            productId: product.id,
+            sourceId: run.source.id,
+            sellerId: seller.id,
+            url: result.url,
+            price: result.price,
+            currency: result.currency,
+            condition: result.condition,
+            availability: result.availability,
+            shippingCost: 0,
+            title: result.title,
+          },
+        });
+        offerId = offer.id;
+        offersCreated++;
+      }
+
+      // Always append a new price observation
       await prisma.priceObservation.create({
         data: {
-          offerId: offer.id,
+          offerId,
           price: result.price,
           currency: result.currency,
         },
@@ -223,7 +258,11 @@ export async function executeRun(runId: string): Promise<{
         status: "COMPLETED",
         completedAt: new Date(),
         itemsFound,
-        metadata: { resultsCount: results.length },
+        metadata: {
+          resultsCount: results.length,
+          offersReused,
+          offersCreated,
+        },
       },
     });
 
