@@ -11,7 +11,57 @@
  * Skips offers with 0 or >1 candidate runs.
  * Idempotent: uses upsert on @@unique([runId, offerId]).
  *
- * Usage: npx tsx prisma/backfill-run-offers.ts
+ * ═══════════════════════════════════════════════════════════════════════
+ * OPERATOR RUNBOOK
+ * ═══════════════════════════════════════════════════════════════════════
+ *
+ * WHEN TO RUN:
+ *   After deploying the RunOffer migration (20260403100000_run_offer_association)
+ *   to any environment that has pre-existing offers without RunOffer records.
+ *
+ * PRE-CHECK (run these queries against the target DB):
+ *
+ *   -- Count orphan offers (should be > 0 if backfill is needed)
+ *   SELECT COUNT(*) FROM offers o
+ *   WHERE NOT EXISTS (SELECT 1 FROM run_offers ro WHERE ro."offerId" = o.id);
+ *
+ *   -- Preview what will be matched
+ *   SELECT o.title, o."createdAt", r.id AS run_id, si.title AS intent
+ *   FROM offers o
+ *   JOIN retrieval_runs r ON r."sourceId" = o."sourceId"
+ *     AND r.status = 'COMPLETED' AND r."itemsFound" > 0
+ *     AND r."startedAt" <= o."createdAt" AND r."completedAt" >= o."createdAt"
+ *   JOIN shopping_intents si ON si.id = r."intentId"
+ *   WHERE NOT EXISTS (SELECT 1 FROM run_offers ro WHERE ro."offerId" = o.id);
+ *
+ * EXECUTE:
+ *   cd packages/db
+ *   DATABASE_URL="<target-db-url>" npx tsx prisma/backfill-run-offers.ts
+ *
+ * POST-CHECK:
+ *
+ *   -- Verify orphan count dropped
+ *   SELECT COUNT(*) FROM offers o
+ *   WHERE NOT EXISTS (SELECT 1 FROM run_offers ro WHERE ro."offerId" = o.id);
+ *
+ *   -- Verify RunOffer rows created
+ *   SELECT COUNT(*) FROM run_offers;
+ *
+ *   -- Verify restored visibility (pick an intent with backfilled offers)
+ *   SELECT o.title, o.price FROM offers o
+ *   JOIN run_offers ro ON ro."offerId" = o.id
+ *   JOIN retrieval_runs r ON r.id = ro."runId"
+ *   WHERE r."intentId" = '<intent-id>'
+ *   ORDER BY o.price;
+ *
+ * IDEMPOTENCY: Safe to re-run. Uses upsert — will not create duplicate rows.
+ *
+ * SKIPPED RECORDS:
+ *   - NO_MATCH: offers created outside all run windows (typically seeded data).
+ *     Fix by reseeding: npx prisma db seed
+ *   - AMBIGUOUS: offers inside overlapping run windows (multiple candidate runs).
+ *     Must be resolved manually or by rerunning the intent.
+ * ═══════════════════════════════════════════════════════════════════════
  */
 import { PrismaClient } from "@prisma/client";
 
