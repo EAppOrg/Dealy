@@ -217,19 +217,35 @@ export async function executeRun(runId: string): Promise<{
         // New offer — find or create canonical product
         const brand = extractBrand(result.title);
         const normalizedTitle = normalizeTitle(result.title);
+        const model = extractModel(result.title, brand);
 
-        // Cross-source matching: reuse existing product if brand + normalized title match
+        // Tier 1: exact brand + exact normalized title match
         let product = brand
           ? await prisma.canonicalProduct.findFirst({
               where: { brand, name: normalizedTitle },
             })
           : null;
 
+        // Tier 2: brand + model match (with variant blocker check)
+        if (!product && brand && model) {
+          const modelCandidate = await prisma.canonicalProduct.findFirst({
+            where: { brand, model },
+          });
+          if (modelCandidate) {
+            const existingBlockers = extractVariantBlockers(modelCandidate.name);
+            const newBlockers = extractVariantBlockers(result.title);
+            if (!variantBlockersConflict(existingBlockers, newBlockers)) {
+              product = modelCandidate;
+            }
+          }
+        }
+
         if (!product) {
           product = await prisma.canonicalProduct.create({
             data: {
               name: normalizedTitle,
               brand,
+              model,
             },
           });
         }
@@ -353,6 +369,117 @@ export async function executeRun(runId: string): Promise<{
  */
 function normalizeTitle(title: string): string {
   return title.trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Extract a model identifier from a product title.
+ *
+ * Looks for the first alphanumeric token (containing both letters AND digits)
+ * after removing the brand name. Rejects pure numbers, pure letters, and
+ * known generic descriptors.
+ *
+ * Examples:
+ *   "Sony WH-1000XM5 Wireless Headphones" → "WH-1000XM5"
+ *   "Corsair K70 RGB Keyboard"            → "K70"
+ *   "Apple AirPods Pro 2"                 → null (no mixed alphanumeric token)
+ *   "Dell XPS 15 Laptop"                  → "XPS15" (combined)
+ */
+function extractModel(title: string, brand: string | null): string | null {
+  // Remove brand from title to avoid matching brand as model
+  let text = title;
+  if (brand) {
+    text = text.replace(new RegExp(brand, "i"), "").trim();
+  }
+
+  const REJECT = new Set([
+    "RGB", "USB", "LED", "LCD", "HDR", "HD", "4K", "5G", "WIFI", "PRO",
+    "MAX", "PLUS", "ULTRA", "LITE", "AIR", "SE", "XL", "GT",
+  ]);
+
+  // Match hyphenated model numbers first: WH-1000XM5, WF-1000XM5, K70-RGB
+  const hyphenated = text.match(/\b([A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\b/);
+  if (hyphenated) {
+    const token = hyphenated[1].toUpperCase();
+    const hasLetter = /[A-Z]/.test(token);
+    const hasDigit = /\d/.test(token);
+    if (hasLetter && hasDigit && !REJECT.has(token)) {
+      return token;
+    }
+  }
+
+  // Match adjacent letter+number tokens: K70, XPS15, RTX4090
+  const tokens = text.split(/\s+/);
+  for (const raw of tokens) {
+    const token = raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    if (token.length < 2) continue;
+    if (REJECT.has(token)) continue;
+
+    const hasLetter = /[A-Z]/.test(token);
+    const hasDigit = /\d/.test(token);
+    if (hasLetter && hasDigit) {
+      return token;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract variant-defining tokens from a product title.
+ * These are used as blocker conditions: if two products have the same
+ * brand+model but different variant tokens, they must not merge.
+ *
+ * Returns normalized variant strings like ["256GB", "16INCH", "M3"].
+ */
+function extractVariantBlockers(title: string): string[] {
+  const blockers: string[] = [];
+  const upper = title.toUpperCase();
+
+  // Storage: 128GB, 256GB, 512GB, 1TB, 2TB
+  const storage = upper.match(/\b(\d+)\s*(GB|TB)\b/);
+  if (storage) blockers.push(storage[1] + storage[2]);
+
+  // Screen size: 13-inch, 14", 15.6", 55", 65"
+  const screen = upper.match(/\b(\d{2,3})[\s-]*(INCH|"|''|IN)\b/);
+  if (screen) blockers.push(screen[1] + "INCH");
+
+  // Apple silicon generation: M1, M2, M3, M4
+  const appleChip = upper.match(/\b(M[1-4])\s*(PRO|MAX|ULTRA)?\b/);
+  if (appleChip) blockers.push(appleChip[1] + (appleChip[2] || ""));
+
+  // Generation: Gen 1, Gen 2, 1st Gen, 2nd Gen, 3rd Gen
+  const gen = upper.match(/\b(?:GEN\s*(\d+)|(\d+)(?:ST|ND|RD|TH)\s*GEN)\b/);
+  if (gen) blockers.push("GEN" + (gen[1] || gen[2]));
+
+  return blockers;
+}
+
+/**
+ * Check if two sets of variant blockers conflict.
+ * Returns true if they conflict (merge should be blocked).
+ */
+function variantBlockersConflict(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) return false;
+
+  // Group blockers by dimension (storage, screen, chip, gen)
+  const getDimension = (v: string): string => {
+    if (/^\d+(GB|TB)$/.test(v)) return "storage";
+    if (/^\d+INCH$/.test(v)) return "screen";
+    if (/^M\d/.test(v)) return "chip";
+    if (/^GEN\d/.test(v)) return "gen";
+    return v;
+  };
+
+  const aMap = new Map<string, string>();
+  for (const v of a) aMap.set(getDimension(v), v);
+
+  for (const v of b) {
+    const dim = getDimension(v);
+    const existing = aMap.get(dim);
+    if (existing && existing !== v) return true; // same dimension, different value
+  }
+
+  return false;
 }
 
 function extractBrand(title: string): string | null {
