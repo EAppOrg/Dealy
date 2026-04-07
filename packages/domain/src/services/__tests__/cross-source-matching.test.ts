@@ -379,6 +379,75 @@ describe("cross-source-matching", () => {
     products.forEach((p) => expect(p.brand).toBeNull());
   });
 
+  it("substring brand false positives are blocked by word-boundary matching", async () => {
+    // Titles that contain brand substrings but are NOT that brand's product.
+    // These must get null brand → separate products, not false-merged.
+    const fpTitles = [
+      "PHP Developer Guide 2024",         // contains "hp" substring
+      "Verbose Logging Module Pro",        // contains "bose" substring
+      "Modelling Clay Set for Kids",       // contains "dell" substring
+      "Heartbeats Monitor Fitness Strap",  // contains "beats" substring
+      "Tanker Grade USB-C Cable 6ft",      // contains "anker" substring
+    ];
+
+    for (const fpTitle of fpTitles) {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          makeDdgHtml([
+            {
+              title: fpTitle,
+              price: "$19.00",
+              url: `https://amazon.example.com/fp-${Date.now()}`,
+            },
+          ]),
+      });
+      const run = await createPendingRun(sourceAId);
+      await executeRun(run.id);
+    }
+
+    // All should have null brand — word boundaries prevent false extraction
+    const products = await prisma.canonicalProduct.findMany();
+    expect(products).toHaveLength(fpTitles.length);
+    products.forEach((p) => expect(p.brand).toBeNull());
+  });
+
+  it("short brands still extract correctly as standalone tokens", async () => {
+    // Real brand titles where the brand appears as a proper standalone token
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        makeDdgHtml([
+          {
+            title: "HP Pavilion 15 Laptop",
+            price: "$599.00",
+            url: "https://amazon.example.com/hp-pavilion",
+          },
+        ]),
+    });
+    const runA = await createPendingRun(sourceAId);
+    await executeRun(runA.id);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        makeDdgHtml([
+          {
+            title: "LG 55-inch OLED TV",
+            price: "$1299.00",
+            url: "https://bestbuy.example.com/lg-oled",
+          },
+        ]),
+    });
+    const runB = await createPendingRun(sourceBId);
+    await executeRun(runB.id);
+
+    const products = await prisma.canonicalProduct.findMany();
+    expect(products).toHaveLength(2);
+    const brands = products.map((p) => p.brand).sort();
+    expect(brands).toEqual(["HP", "LG"]);
+  });
+
   it("different brands with same model name do NOT merge", async () => {
     // Hypothetical: two different brands, similar model name
     mockFetch.mockResolvedValueOnce({

@@ -499,7 +499,8 @@ function extractBrand(title: string): string | null {
     "Netgear", "TP-Link", "Huawei", "Vizio",
   ];
   for (const brand of knownBrands) {
-    if (title.toLowerCase().includes(brand.toLowerCase())) return brand;
+    const escaped = brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\b${escaped}\\b`, "i").test(title)) return brand;
   }
   return null;
 }
