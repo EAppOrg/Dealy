@@ -224,11 +224,14 @@ describe("dedup-persistence", () => {
     const offers = await prisma.offer.findMany({ where: { sourceId } });
     expect(offers).toHaveLength(2);
 
-    // Different products too (since we only merge via offer URL match)
+    // Same brand + same title → correctly merged to 1 canonical product
+    // (cross-source matching reuses product when brand+title match)
     const products = await prisma.canonicalProduct.findMany({
       where: { name: "Sony WH-1000XM5" },
     });
-    expect(products).toHaveLength(2);
+    expect(products).toHaveLength(1);
+    // Both offers point to the same product
+    expect(offers[0].productId).toBe(offers[1].productId);
   });
 
   it("run metadata includes dedup stats", async () => {

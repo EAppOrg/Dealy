@@ -214,13 +214,25 @@ export async function executeRun(runId: string): Promise<{
         offerId = existingOffer.id;
         offersReused++;
       } else {
-        // New offer — create product and offer
-        const product = await prisma.canonicalProduct.create({
-          data: {
-            name: result.title,
-            brand: extractBrand(result.title),
-          },
-        });
+        // New offer — find or create canonical product
+        const brand = extractBrand(result.title);
+        const normalizedTitle = normalizeTitle(result.title);
+
+        // Cross-source matching: reuse existing product if brand + normalized title match
+        let product = brand
+          ? await prisma.canonicalProduct.findFirst({
+              where: { brand, name: normalizedTitle },
+            })
+          : null;
+
+        if (!product) {
+          product = await prisma.canonicalProduct.create({
+            data: {
+              name: normalizedTitle,
+              brand,
+            },
+          });
+        }
 
         try {
           const offer = await prisma.offer.create({
@@ -333,6 +345,14 @@ export async function executeRun(runId: string): Promise<{
 
     return { status: "FAILED", itemsFound: 0, error: errorMessage };
   }
+}
+
+/**
+ * Normalize a product title for cross-source matching.
+ * Trims whitespace and collapses multiple spaces to single space.
+ */
+function normalizeTitle(title: string): string {
+  return title.trim().replace(/\s+/g, " ");
 }
 
 function extractBrand(title: string): string | null {
