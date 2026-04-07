@@ -219,10 +219,13 @@ export async function executeRun(runId: string): Promise<{
         const normalizedTitle = normalizeTitle(result.title);
         const model = extractModel(result.title, brand);
 
-        // Tier 1: exact brand + exact normalized title match
+        // Tier 1: exact brand + case-insensitive normalized title match
         let product = brand
           ? await prisma.canonicalProduct.findFirst({
-              where: { brand, name: normalizedTitle },
+              where: {
+                brand,
+                name: { equals: normalizedTitle, mode: "insensitive" },
+              },
             })
           : null;
 
@@ -484,9 +487,16 @@ function variantBlockersConflict(a: string[], b: string[]): boolean {
 
 function extractBrand(title: string): string | null {
   const knownBrands = [
+    // Original 20
     "Apple", "Samsung", "Sony", "LG", "Dell", "HP", "Lenovo", "Asus",
     "Acer", "Microsoft", "Google", "Bose", "JBL", "Logitech", "Corsair",
     "Razer", "Nintendo", "AMD", "Intel", "NVIDIA",
+    // Batch 2: conservative expansion (29 safe product-manufacturer brands)
+    "Anker", "Beats", "OnePlus", "Xiaomi", "MSI", "Roku", "Sonos",
+    "Sennheiser", "Canon", "Nikon", "Panasonic", "Philips", "TCL",
+    "Hisense", "Dyson", "Garmin", "Jabra", "HyperX", "SteelSeries",
+    "Epson", "Toshiba", "Motorola", "DJI", "GoPro", "Fitbit",
+    "Netgear", "TP-Link", "Huawei", "Vizio",
   ];
   for (const brand of knownBrands) {
     if (title.toLowerCase().includes(brand.toLowerCase())) return brand;

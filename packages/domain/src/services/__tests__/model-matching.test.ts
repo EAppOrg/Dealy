@@ -214,15 +214,15 @@ describe("model-matching", () => {
   });
 
   it("null brand prevents model matching", async () => {
-    // No recognized brand
+    // No recognized brand — fictional brand not in knownBrands
     mockFetch.mockResolvedValueOnce({
       ok: true,
       text: async () =>
         makeDdgHtml([
           {
-            title: "Anker SoundCore A3i Earbuds",
+            title: "Zyvora OmniWidget X1 Earbuds",
             price: "$39.00",
-            url: "https://amazon.example.com/anker-a3i",
+            url: "https://amazon.example.com/zyvora-x1",
           },
         ]),
     });
@@ -234,16 +234,16 @@ describe("model-matching", () => {
       text: async () =>
         makeDdgHtml([
           {
-            title: "Anker SoundCore A3i Wireless Earbuds",
+            title: "Zyvora OmniWidget X1 Wireless Earbuds",
             price: "$35.00",
-            url: "https://bestbuy.example.com/anker-a3i",
+            url: "https://bestbuy.example.com/zyvora-x1",
           },
         ]),
     });
     const runB = await createPendingRun(sourceBId);
     await executeRun(runB.id);
 
-    // Anker not in known brands → no model matching → 2 products
+    // Zyvora not in known brands → no model matching → 2 products
     const products = await prisma.canonicalProduct.findMany();
     expect(products).toHaveLength(2);
   });

@@ -256,6 +256,129 @@ describe("cross-source-matching", () => {
     expect(products[0].brand).toBe("Dell");
   });
 
+  it("case-only title difference merges via Tier-1", async () => {
+    // Source A — title in mixed case
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        makeDdgHtml([
+          {
+            title: "Sony WH-1000XM5 Wireless Headphones",
+            price: "$298.00",
+            url: "https://amazon.example.com/sony-xm5-a",
+          },
+        ]),
+    });
+    const runA = await createPendingRun(sourceAId);
+    await executeRun(runA.id);
+
+    // Source B — same title, different casing only
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        makeDdgHtml([
+          {
+            title: "sony wh-1000xm5 wireless headphones",
+            price: "$279.00",
+            url: "https://bestbuy.example.com/sony-xm5-b",
+          },
+        ]),
+    });
+    const runB = await createPendingRun(sourceBId);
+    await executeRun(runB.id);
+
+    // Case-insensitive Tier-1 → 1 product, 2 offers
+    const products = await prisma.canonicalProduct.findMany();
+    expect(products).toHaveLength(1);
+    expect(products[0].brand).toBe("Sony");
+
+    const offers = await prisma.offer.findMany();
+    expect(offers).toHaveLength(2);
+    expect(offers[0].productId).toBe(offers[1].productId);
+  });
+
+  it("newly recognized brand (Anker) enables cross-source matching", async () => {
+    const title = "Anker Soundcore Life Q20 Headphones";
+
+    // Source A
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        makeDdgHtml([
+          {
+            title,
+            price: "$59.00",
+            url: "https://amazon.example.com/anker-q20",
+          },
+        ]),
+    });
+    const runA = await createPendingRun(sourceAId);
+    await executeRun(runA.id);
+
+    // Source B — same title
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        makeDdgHtml([
+          {
+            title,
+            price: "$54.00",
+            url: "https://bestbuy.example.com/anker-q20",
+          },
+        ]),
+    });
+    const runB = await createPendingRun(sourceBId);
+    await executeRun(runB.id);
+
+    // Anker is now recognized → Tier-1 merges → 1 product, 2 offers
+    const products = await prisma.canonicalProduct.findMany();
+    expect(products).toHaveLength(1);
+    expect(products[0].brand).toBe("Anker");
+
+    const offers = await prisma.offer.findMany();
+    expect(offers).toHaveLength(2);
+    expect(offers[0].productId).toBe(offers[1].productId);
+  });
+
+  it("excluded/unknown brand still prevents cross-source matching", async () => {
+    const title = "Zyvora OmniWidget Pro 3000";
+
+    // Source A
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        makeDdgHtml([
+          {
+            title,
+            price: "$49.00",
+            url: "https://amazon.example.com/zyvora-pro",
+          },
+        ]),
+    });
+    const runA = await createPendingRun(sourceAId);
+    await executeRun(runA.id);
+
+    // Source B — same title
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        makeDdgHtml([
+          {
+            title,
+            price: "$45.00",
+            url: "https://bestbuy.example.com/zyvora-pro",
+          },
+        ]),
+    });
+    const runB = await createPendingRun(sourceBId);
+    await executeRun(runB.id);
+
+    // Zyvora not in known brands → null brand → 2 separate products
+    const products = await prisma.canonicalProduct.findMany();
+    expect(products).toHaveLength(2);
+    products.forEach((p) => expect(p.brand).toBeNull());
+  });
+
   it("different brands with same model name do NOT merge", async () => {
     // Hypothetical: two different brands, similar model name
     mockFetch.mockResolvedValueOnce({
