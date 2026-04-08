@@ -188,6 +188,7 @@ model CanonicalProduct {
   @@index([familyId])
   @@index([asin])
   @@index([brand, name])
+  @@index([brand, model])
   @@map("canonical_products")
 }
 
