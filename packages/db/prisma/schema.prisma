@@ -256,7 +256,6 @@ model PriceObservation {
   offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
 
   @@index([offerId])
-  @@index([observedAt])
   @@map("price_observations")
 }
 
